@@ -46,6 +46,8 @@ ngrok http 3000
 ```
 Provides a public HTTPS URL like `https://abc123.ngrok-free.app` tunneling to your local machine. Shopify requires HTTPS — ngrok provides that instantly.
 
+> **Free plan:** The ngrok URL changes every time you restart it. Each time it changes, update **three places**: `APP_URL` in `.env`, the redirect URL in the Dev Dashboard app config, and the carrier service callback URL (delete LTL Freight from **Settings → Shipping and delivery → Manage rates**, then re-run `npm run register`). See `DEV_STORE_SETUP.md` Step 4 for details.
+
 ### Get the Dev Store Created
 
 See [`docs/DEV_STORE_SETUP.md`](DEV_STORE_SETUP.md) for the full step-by-step guide covering the current Shopify Dev Dashboard workflow.
@@ -166,10 +168,11 @@ Variables:
 ### Step 5 — Connect and Test with ngrok
 
 1. Start the Express app locally (`npm run dev`)
-2. Run `ngrok http 3000` — copy the public HTTPS URL
-3. Run the registration script with the ngrok URL as the callback
-4. In the Shopify dev store admin, use **"Test your app"** (`supportsServiceDiscovery`) to send a test rate request without a real checkout
-5. Add an LTL-qualifying product to the dev store, proceed to checkout, confirm LTL rates appear alongside UPS
+2. Run `ngrok http 3000` — copy the public HTTPS URL into `APP_URL` in `.env`
+3. Update the redirect URL in the Dev Dashboard app config to match the new ngrok URL
+4. Run `npm run register` to register the carrier service callback URL with Shopify
+5. In the Shopify dev store admin, use **"Test your app"** (`supportsServiceDiscovery`) to send a test rate request without a real checkout
+6. Add an LTL-qualifying product to the dev store, proceed to checkout, confirm LTL rates appear alongside UPS
 
 ---
 

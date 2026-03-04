@@ -23,12 +23,13 @@ Replace `MockTmsAdapter` with `RealTmsAdapter`:
 - Handle TMS error responses and no-quote scenarios gracefully
 - Test against TMS sandbox before pointing at production TMS
 
-### Step 2 — Security: HMAC Request Verification
+### Step 2 — Security: HMAC Request Verification ✅ Built in POC
 
-Add middleware to verify every incoming Shopify rate request:
+HMAC middleware is already implemented in `src/middleware/verifyShopifyHmac.ts`:
 - Shopify signs each request with `X-Shopify-Hmac-Sha256` using the app's client secret
-- Compute HMAC-SHA256 of the raw request body using the client secret
-- Compare to the header value — reject with HTTP 401 if it doesn't match
+- Middleware reads the raw request body as a `Buffer`, computes HMAC-SHA256 against `SHOPIFY_CLIENT_SECRET`
+- Uses `crypto.timingSafeEqual` to compare — rejects with HTTP 401 if it doesn't match
+- Applied at the route level (not globally) to preserve the raw Buffer before JSON parsing
 - Prevents unauthorized third parties from calling our endpoint and abusing the TMS API
 
 ### Step 3 — Rate Caching & Timeout Handling
@@ -54,15 +55,15 @@ Before calling the TMS, validate the incoming Shopify payload:
 - Apply LTL eligibility logic (weight threshold, product tag, or metafield — per client decision)
 - Log all validation failures for debugging
 
-### Step 5 — Health Check Endpoint & Logging
+### Step 5 — Health Check Endpoint & Logging ✅ Health check built in POC
 
-- Add `GET /health` endpoint that returns `{ "status": "ok" }` — used by cloud host and keep-alive pings
-- Implement structured logging (JSON format) for all rate requests, TMS calls, cache hits/misses, timeouts, and errors
-- Log entries should include: timestamp, origin ZIP, destination ZIP, total weight, TMS response time, outcome
+The `GET /health` endpoint is already implemented and returns `{ "status": "ok" }`.
 
-### Step 6 — Shopify App Scopes (Register Phase 2 Now)
+For production, add structured logging (JSON format) for all rate requests, TMS calls, cache hits/misses, timeouts, and errors. Log entries should include: timestamp, origin ZIP, destination ZIP, total weight, TMS response time, outcome.
 
-When registering the production app on the merchant, include Phase 2 scopes upfront to avoid requiring a reinstall later:
+### Step 6 — Shopify App Scopes ✅ Done
+
+Both scopes were registered from the start during POC setup to avoid requiring a reinstall later:
 - `write_shipping` — carrier service registration (Phase 1)
 - `read_orders` — read order data for shipment creation (Phase 2)
 
@@ -76,7 +77,7 @@ Maintain two fully separate deployments:
 
 | | Development | Production |
 |-|-------------|-----------|
-| Shopify store | Dev store (Partner Dashboard) | the merchant |
+| Shopify store | Dev store (Dev Dashboard) | the merchant |
 | TMS endpoint | TMS sandbox | TMS production |
 | Hosting | Local + ngrok or low-cost cloud | AWS App Runner / Azure App Service |
 | Secrets | `.env` file | AWS Secrets Manager / Azure Key Vault |
@@ -95,6 +96,7 @@ Maintain two fully separate deployments:
 - [ ] App installed on the merchant with correct scopes (`write_shipping`, `read_orders`)
 - [ ] Carrier service registered with production callback URL
 - [ ] LTL rates confirmed appearing at checkout alongside UPS on live store
+- [ ] LTL rates confirmed appearing in the merchant's cart page **"Estimate Shipping"** widget — the merchant's theme includes this feature and it must be verified separately from the checkout flow
 - [ ] the merchant team notified and signed off
 
 ---

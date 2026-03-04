@@ -77,7 +77,10 @@ Copy the HTTPS forwarding URL (e.g., `https://abc123.ngrok-free.app`) into `.env
 APP_URL="https://abc123.ngrok-free.app"
 ```
 
-> **Free plan limitation:** The ngrok URL changes every time you restart it. When it changes, you must update `APP_URL` in `.env` AND update the redirect URL in the Dev Dashboard app configuration.
+> **Free plan limitation:** The ngrok URL changes every time you restart it. When it changes, you must update **three places**:
+> 1. `APP_URL` in `.env`
+> 2. The redirect URL in the Dev Dashboard app configuration (under your app version → Redirect URLs)
+> 3. The carrier service callback URL in Shopify — delete the existing LTL Freight carrier service from **Settings → Shipping and delivery → Manage rates**, then re-run `npm run register` with the new URL set in `.env`
 
 ---
 

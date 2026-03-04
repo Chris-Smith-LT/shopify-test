@@ -108,6 +108,6 @@ In the Shopify store admin: **Settings → Shipping and delivery → Manage rate
 ## Notes
 
 - `SHOPIFY_SHOP_DOMAIN` must be the bare domain with no `https://` prefix
-- The ngrok URL changes on every restart (free plan) — update `APP_URL` in `.env` and the redirect URL in the Dev Dashboard app config when it does
+- The ngrok URL changes on every restart (free plan) — three places must be updated each time: `APP_URL` in `.env`, the redirect URL in the Dev Dashboard app config (under your app version), and the carrier service callback URL in Shopify (delete LTL Freight from **Settings → Shipping and delivery → Manage rates**, then re-run `npm run register`)
 - The dev store location address must be fully populated (Settings → Locations) or Shopify will send null origin fields and no rates will be returned
 - See [`docs/DEV_STORE_SETUP.md`](docs/DEV_STORE_SETUP.md) for full dev store setup instructions

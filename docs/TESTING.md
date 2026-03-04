@@ -8,7 +8,7 @@ Two fully separate environments must exist before production testing begins. Nev
 
 | | Development / POC | Production |
 |-|-------------------|-----------|
-| Shopify store | Dev store (Shopify Partner Dashboard) | The merchant's live store |
+| Shopify store | Dev store (Shopify Dev Dashboard) | The merchant's live store |
 | TMS endpoint | TMS sandbox | TMS production |
 | Hosting | Local + ngrok | AWS App Runner / Azure App Service |
 | Secrets | `.env` file | AWS Secrets Manager / Azure Key Vault |
@@ -28,12 +28,17 @@ Before connecting Shopify at all, validate app logic directly with curl or Postm
 curl -X POST http://localhost:3000/api/shopify/rates \
   -H "Content-Type: application/json" \
   -d '{
-    "origin": { "postal_code": "44114", "city": "Cleveland", "province": "OH", "country": "US" },
-    "destination": { "postal_code": "90210", "city": "Beverly Hills", "province": "CA", "country": "US" },
-    "items": [{ "name": "Dog Food Pallet", "sku": "DF-001", "quantity": 2, "weight": 68039, "price": 29900 }],
-    "currency": "USD"
+    "rate": {
+      "origin": { "postal_code": "44114", "city": "Cleveland", "province": "OH", "country": "US", "name": "", "address1": "", "address2": "", "address3": "", "phone": "", "fax": "", "email": "", "address_type": "", "company_name": "" },
+      "destination": { "postal_code": "90210", "city": "Beverly Hills", "province": "CA", "country": "US", "name": "John Doe", "address1": "", "address2": "", "address3": "", "phone": "", "fax": "", "email": "", "address_type": "", "company_name": "" },
+      "items": [{ "name": "Dog Food Pallet", "sku": "DF-001", "quantity": 2, "grams": 68039, "price": 29900, "vendor": "", "requires_shipping": true, "taxable": true, "fulfillment_service": "manual", "properties": null, "product_id": 1, "variant_id": 1 }],
+      "currency": "USD",
+      "locale": "en"
+    }
   }'
 ```
+
+> **Note:** The app enforces HMAC verification on all rate requests. A raw curl without a valid `X-Shopify-Hmac-Sha256` header will return HTTP 401. This curl is useful for validating payload parsing and response format in isolation — for full end-to-end testing including HMAC, use the Shopify checkout flow.
 
 ### Test Products for the Dev Store
 
@@ -56,10 +61,10 @@ Add these products to the Shopify dev store to cover both LTL and non-LTL scenar
 
 ### POC Success Criteria
 
-- [ ] Shopify dev store checkout shows LTL rates returned by our app
-- [ ] LTL rates appear alongside (not replacing) existing UPS rates
-- [ ] Returning `{ "rates": [] }` correctly causes Shopify to show UPS rates only
-- [ ] App responds well within the 10-second Shopify timeout
+- [x] Shopify dev store checkout shows LTL rates returned by our app
+- [x] LTL rates appear alongside (not replacing) existing UPS rates
+- [x] Returning `{ "rates": [] }` correctly causes Shopify to show UPS rates only
+- [x] App responds well within the 10-second Shopify timeout
 
 ---
 

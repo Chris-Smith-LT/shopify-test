@@ -63,7 +63,7 @@ Customer reaches shipping step at checkout
 
 | Direction | Method |
 |-----------|--------|
-| Our app calling Shopify (registration) | Admin API access token (`shpat_...`) in request header |
+| Our app calling Shopify (registration) | OAuth offline access token in `X-Shopify-Access-Token` request header |
 | Shopify calling our app (checkout) | HMAC-SHA256 signature in `X-Shopify-Hmac-Sha256` header — our app verifies this |
 
 ---
@@ -78,13 +78,13 @@ Customer reaches shipping step at checkout
 | 4 | **Shipping Company TMS** | Shipping company (our client) | Calculates LTL freight rates; returns quote to our app |
 | 5 | **Cloud Host (AWS or Azure)** | Us / shipping company | Runs our app; provides the public HTTPS URL Shopify calls |
 | 6 | **Rate Cache** | Our app (internal) | Stores recent TMS responses to speed up repeated rate requests |
-| 7 | **Shopify Partner Dashboard** | Us | Used once during setup to register the app and carrier service |
+| 7 | **Shopify Dev Dashboard** | Us | Used once during setup to create the app, run the OAuth flow, and register the carrier service |
 
 ### Interaction Summary
 
 | From | To | Protocol | When | Required? |
 |------|----|----------|------|-----------|
-| Developer | Shopify Partner Dashboard | Browser (manual) | Setup only | Yes |
+| Developer | Shopify Dev Dashboard | Browser (manual) | Setup only | Yes |
 | Our App | Shopify Admin API | GraphQL / HTTPS | Setup only | Yes |
 | Shopify Platform | Our App | REST POST / HTTPS | Every checkout | Yes |
 | Our App | TMS | REST or SOAP / HTTPS | Every checkout (cache miss) | Yes |
