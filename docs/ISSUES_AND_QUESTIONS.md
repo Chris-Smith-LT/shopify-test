@@ -67,12 +67,44 @@ Phase 2 (shipment creation) will require additional Shopify scopes (`read_orders
 
 **Recommendation:** Register `write_shipping` and `read_orders` during initial app setup even if `read_orders` isn't used yet.
 
+### 12. Shopify Platform Restructuring *(affects dev setup and production)*
+
+Shopify made significant platform changes in 2025 that affect how dev stores and apps are created and managed:
+
+**Dev Dashboard (GA: September 3, 2025):**
+- Dev stores and apps now live at `dev.shopify.com`, not the Partner Dashboard
+- The Partner Dashboard (`partners.shopify.com`) now handles app distribution and client-transfer stores only
+- Dev stores are no longer visible in the Partner Dashboard
+- Team members must be explicitly invited to individual dev stores — org-wide visibility is no longer automatic
+
+**Legacy custom app deprecation (January 1, 2026):**
+- Store-admin-created apps with direct `shpat_...` tokens are deprecated
+- All new apps must be created through the Dev Dashboard and use OAuth
+- Our app was built with OAuth from the start — no rework needed
+
+**Carrier-calculated shipping on dev stores:**
+- Dev stores are officially exempt from plan requirements for the Carrier Service API
+- However, dev stores created on Basic or Grow plan tiers may show an "Upgrade Plan" prompt in the admin UI — the UI reflects the plan tier even though the API exemption applies
+- **Solution:** Always create dev stores on the **Advanced plan tier** in the Dev Dashboard — this avoids the CCS prompt entirely
+- If CCS is blocked on an existing dev store: contact `support@shopify.com` to have the flag enabled
+
+**GraphQL requirement:**
+- The REST Carrier Service API was deprecated October 2024
+- New apps must use GraphQL exclusively as of April 1, 2025
+- Our registration script already uses `carrierServiceCreate` (GraphQL) — no action needed
+
+**After carrier service registration, one additional step is required:**
+- In the store admin: Settings → Shipping and delivery → edit a shipping zone → Add rate → "Use carrier or app to calculate rates" → activate `LTL Freight`
+- Without this step the carrier service is registered but not active at checkout
+
+See `DEV_STORE_SETUP.md` for the full current setup walkthrough.
+
 ---
 
 ## Clarifying Questions / Information Needed
 
 ### Shopify Store
-1. What Shopify plan is the merchant currently on? *(Must be Advanced or higher — upgrade required if not already.)*
+1. What Shopify plan is the merchant currently on? *(Must be Advanced or higher — upgrade required if not already.)* Also confirm that **carrier-calculated shipping is enabled** in their Shopify shipping settings — being on the right plan doesn't automatically activate it, and the carrier service registration will fail silently if it isn't on.
 2. Can you provide access to the Shopify store for app installation, or should we coordinate through your Shopify admin?
 
 ### TMS API
@@ -83,45 +115,46 @@ Phase 2 (shipment creation) will require additional Shopify scopes (`read_orders
 7. What does a sample TMS rate response look like?
 
 ### Business Logic
-8. What is the weight threshold that classifies an order as LTL vs. parcel/UPS? *(e.g., over 150 lbs)*
-9. Are there product-level flags in Shopify (SKU, tags, metafields) that identify LTL-eligible items?
-10. How many rate options should appear at checkout? *(one "Standard LTL" rate, or multiple tiers?)*
-11. Should transit time / delivery date estimates be shown at checkout?
-12. Should any markup or handling fee be added on top of the raw TMS rate?
-13. What should happen if the TMS is unavailable — silently fall back to UPS only, or show an error?
+8. **Confirm understanding of how rates work at checkout:** Our app only adds LTL rates — it does not touch, replace, or pass through UPS rates. Shopify handles UPS independently through its own shipping settings. The customer will see both sets of rates combined at checkout (e.g., UPS Ground, UPS 2-Day, LTL Standard Freight). If our app returns no rates, UPS rates still appear normally. This should be confirmed with the client to ensure they have the correct expectations for what gets built.
+9. What is the weight threshold that classifies an order as LTL vs. parcel/UPS? *(e.g., over 150 lbs)*
+10. Are there product-level flags in Shopify (SKU, tags, metafields) that identify LTL-eligible items?
+11. How many rate options should appear at checkout? *(one "Standard LTL" rate, or multiple tiers?)*
+12. Should transit time / delivery date estimates be shown at checkout?
+13. Should any markup or handling fee be added on top of the raw TMS rate?
+14. What should happen if the TMS is unavailable — silently fall back to UPS only, or show an error?
 
 ### Shipping Origin
-14. What is the origin warehouse address? *(Street, city, state, ZIP — needed for accurate rate requests)*
-15. Is there more than one origin location?
+15. What is the origin warehouse address? *(Street, city, state, ZIP — needed for accurate rate requests)*
+16. Is there more than one origin location?
 
 ### TMS Technical Details
-16. Does the TMS API restrict access by **IP address (whitelist)**? If yes, we need a static outbound IP configured before deployment.
-17. Does the TMS have a **sandbox/test environment**? If not, how do we test without affecting production data?
-18. Does the TMS **calculate freight class internally**, or does it require us to supply it? If we must supply it — where does the freight class data come from?
-19. Is the TMS API **REST/JSON or SOAP/XML**? Please provide sample request and response payloads.
-20. What is the **typical TMS API response time** for a rate quote? Is there an uptime SLA?
+17. Does the TMS API restrict access by **IP address (whitelist)**? If yes, we need a static outbound IP configured before deployment.
+18. Does the TMS have a **sandbox/test environment**? If not, how do we test without affecting production data?
+19. Does the TMS **calculate freight class internally**, or does it require us to supply it? If we must supply it — where does the freight class data come from?
+20. Is the TMS API **REST/JSON or SOAP/XML**? Please provide sample request and response payloads.
+21. What is the **typical TMS API response time** for a rate quote? Is there an uptime SLA?
 
 ### the merchant
-21. Has the merchant been informed about this integration? **Who is our point of contact** at their company for installation and go-live coordination?
-22. Do all LTL-eligible products in their Shopify store already have **accurate weights** entered? If not, they must complete this before rates will work.
-23. What should happen to LTL rates when a cart contains a **mix of LTL and non-LTL items**? (e.g., one heavy pallet + small accessories — does everything go LTL, or are rates shown separately?)
-24. Are there any **product categories that should never show LTL rates**? (e.g., small accessories, hazmat items, digital products)
+22. Has the merchant been informed about this integration? **Who is our point of contact** at their company for installation and go-live coordination?
+23. Do all LTL-eligible products in their Shopify store already have **accurate weights** entered? If not, they must complete this before rates will work.
+24. What should happen to LTL rates when a cart contains a **mix of LTL and non-LTL items**? (e.g., one heavy pallet + small accessories — does everything go LTL, or are rates shown separately?)
+25. Are there any **product categories that should never show LTL rates**? (e.g., small accessories, hazmat items, digital products)
 
 ### Vendor / Technical Handoff
-25. Which specific Shopify API categories did the original vendor identify? *(Expected under Shipping & Fulfillment)*
-26. Are there any other existing systems (TMS webhooks, order management, etc.) we should be aware of?
+26. Which specific Shopify API categories did the original vendor identify? *(Expected under Shipping & Fulfillment)*
+27. Are there any other existing systems (TMS webhooks, order management, etc.) we should be aware of?
 
 ### Business & Ongoing Maintenance
-27. **Who maintains the app after launch** — our team, or someone at the shipping company? This determines how much documentation and how simple the deployment process needs to be.
-28. What is the **expected checkout volume** on the merchant? *(Helps right-size hosting and determine how critical rate caching is)*
+28. **Who maintains the app after launch** — our team, or someone at the shipping company? This determines how much documentation and how simple the deployment process needs to be.
+29. What is the **expected checkout volume** on the merchant? *(Helps right-size hosting and determine how critical rate caching is)*
 
 ### Deployment & Code Ownership
-29. **What is the engagement model — build-and-handoff or ongoing managed service?** This is the most important ownership question. If we build and hand off, the client owns the code and we document everything for their team. If we run it as a managed service, we retain operational control and they pay for ongoing hosting/maintenance.
-30. **Who owns the source code and GitHub repository?** The repo should live in a GitHub organization under the client's company name (not our personal account). If the client doesn't have a GitHub account, one needs to be created under a company email before deployment. Confirm who controls that account.
-31. **Does the shipping company have an existing AWS account?** If yes, we deploy into their account. If no, a new account should be created under a company email with billing in their name — not under our account. Confirm before any cloud setup begins.
-32. **Who at the company will have access to the AWS console?** Someone on their side should have read access to CloudWatch logs and Secrets Manager (for rotating TMS credentials) even if we handle all code changes. Establish this contact before go-live.
-33. **Who is responsible for rotating secrets if TMS credentials change?** TMS API keys and the Shopify access token will be stored in AWS Secrets Manager. If credentials rotate, someone needs to update them. Confirm whether that's us or someone at the shipping company.
+30. **What is the engagement model — build-and-handoff or ongoing managed service?** This is the most important ownership question. If we build and hand off, the client owns the code and we document everything for their team. If we run it as a managed service, we retain operational control and they pay for ongoing hosting/maintenance.
+31. **Who owns the source code and GitHub repository?** The repo should live in a GitHub organization under the client's company name (not our personal account). If the client doesn't have a GitHub account, one needs to be created under a company email before deployment. Confirm who controls that account.
+32. **Does the shipping company have an existing AWS account?** If yes, we deploy into their account. If no, a new account should be created under a company email with billing in their name — not under our account. Confirm before any cloud setup begins.
+33. **Who at the company will have access to the AWS console?** Someone on their side should have read access to CloudWatch logs and Secrets Manager (for rotating TMS credentials) even if we handle all code changes. Establish this contact before go-live.
+34. **Who is responsible for rotating secrets if TMS credentials change?** TMS API keys and the Shopify access token will be stored in AWS Secrets Manager. If credentials rotate, someone needs to update them. Confirm whether that's us or someone at the shipping company.
 
 ### Phase 2 (Future)
-34. Confirm: the TMS is the same system where shipments should be created in Phase 2?
-35. What **additional data** will the TMS need to create a shipment beyond what's available at rate request time? *(e.g., contact name, phone number, special instructions)*
+35. Confirm: the TMS is the same system where shipments should be created in Phase 2?
+36. What **additional data** will the TMS need to create a shipment beyond what's available at rate request time? *(e.g., contact name, phone number, special instructions)*

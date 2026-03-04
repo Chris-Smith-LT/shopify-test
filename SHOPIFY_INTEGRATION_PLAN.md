@@ -42,3 +42,4 @@ the merchant checkout
 | [`docs/ISSUES_AND_QUESTIONS.md`](docs/ISSUES_AND_QUESTIONS.md) | Potential risks, technical gaps, and clarifying questions for the client |
 | [`docs/TESTING.md`](docs/TESTING.md) | POC and production test cases, test data, go-live checklist |
 | [`docs/MONITORING.md`](docs/MONITORING.md) | Health check, structured logging, keep-alive ping, CloudWatch / Azure Monitor setup |
+| [`docs/DEV_STORE_SETUP.md`](docs/DEV_STORE_SETUP.md) | Current Shopify Dev Dashboard setup guide — dev store, app, OAuth, carrier registration |

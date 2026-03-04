@@ -3,9 +3,12 @@
 **Goal:** Prove the end-to-end flow works — Shopify calls our app at checkout, our app returns rates, and they appear alongside UPS. Uses mock rates in place of the real TMS. No production hardening required.
 
 **Prerequisites:**
-- Shopify dev store created and accessible
-- Custom app installed on dev store with `write_shipping` scope and access token in hand
-- ngrok installed locally for HTTPS tunneling
+- Shopify dev store created on **Advanced plan** via `dev.shopify.com` — see `DEV_STORE_SETUP.md`
+- App created in Dev Dashboard with `write_shipping` and `read_orders` scopes, installed on dev store
+- OAuth flow completed — `SHOPIFY_ACCESS_TOKEN` populated in `.env`
+- Carrier service registered via `npm run register`
+- Store location address fully populated in Settings → Locations
+- ngrok installed and running, `APP_URL` set in `.env`
 
 ---
 
@@ -19,12 +22,19 @@ Build the full app and test the rate endpoint using **Postman or curl** to simul
 curl -X POST http://localhost:3000/api/shopify/rates \
   -H "Content-Type: application/json" \
   -d '{
-    "origin": { "postal_code": "44114", "city": "Cleveland", "province": "OH", "country": "US" },
-    "destination": { "postal_code": "90210", "city": "Beverly Hills", "province": "CA", "country": "US" },
-    "items": [{ "name": "Dog Food Pallet", "sku": "DF-001", "quantity": 2, "weight": 68039, "price": 29900 }],
-    "currency": "USD"
+    "rate": {
+      "origin": { "postal_code": "44114", "city": "Cleveland", "province": "OH", "country": "US", "name": "", "address1": "", "address2": "", "address3": "", "phone": "", "fax": "", "email": "", "address_type": "", "company_name": "" },
+      "destination": { "postal_code": "90210", "city": "Beverly Hills", "province": "CA", "country": "US", "name": "John Doe", "address1": "", "address2": "", "address3": "", "phone": "", "fax": "", "email": "", "address_type": "", "company_name": "" },
+      "items": [{ "name": "Dog Food Pallet", "sku": "DF-001", "quantity": 2, "grams": 68039, "price": 29900, "vendor": "", "requires_shipping": true, "taxable": true, "fulfillment_service": "manual", "properties": null, "product_id": 1, "variant_id": 1 }],
+      "currency": "USD",
+      "locale": "en"
+    }
   }'
 ```
+
+> Note: Shopify wraps the payload in a `rate` key and uses `grams` (not `weight`) for item weight. This curl example matches the actual Shopify format.
+
+> **HMAC note:** The app enforces HMAC verification on all rate requests. A raw curl without a valid `X-Shopify-Hmac-Sha256` header will return HTTP 401. This curl example is useful for validating payload parsing and response format in isolation — for full end-to-end testing including HMAC, use the Shopify checkout flow.
 
 This validates all app logic before Shopify is involved.
 
@@ -38,15 +48,14 @@ Provides a public HTTPS URL like `https://abc123.ngrok-free.app` tunneling to yo
 
 ### Get the Dev Store Created
 
-Ask the company Partner account admin:
-> "Can you create a development store in our Shopify Partner account and add me as staff with full admin access?"
+See [`docs/DEV_STORE_SETUP.md`](DEV_STORE_SETUP.md) for the full step-by-step guide covering the current Shopify Dev Dashboard workflow.
 
-Once done, create the custom app from the store admin:
-1. Store admin → **Settings → Apps and sales channels → Develop apps**
-2. Click **Allow custom app development** if prompted
-3. Click **Create an app** → name it `LTL Carrier Service`
-4. Click **Configure Admin API scopes** → enable `write_shipping` and `read_orders` → Save
-5. Click **Install app** → copy the **Admin API access token** (only shown once — save it immediately)
+Key points:
+- Dev stores and apps now live at `dev.shopify.com` — not the Partner Dashboard
+- Create the dev store on the **Advanced plan tier** to avoid carrier-calculated shipping issues
+- All new apps use **OAuth** — legacy store-admin tokens (`shpat_...`) are deprecated as of January 1, 2026
+- The app is created in the Dev Dashboard with `write_shipping` and `read_orders` scopes
+- OAuth flow is triggered by visiting `/auth?shop=<your-store>.myshopify.com` locally — the token is written to `.env` automatically
 
 ### Add Test Products to the Dev Store
 
@@ -54,7 +63,7 @@ Add products that represent real LTL scenarios:
 - **Heavy product** (e.g., "Dog Food Pallet" — 150 lbs / 68,039 grams) — should trigger LTL rates
 - **Light product** (e.g., "Dog Collar" — 0.5 lbs / 227 grams) — should return no LTL rates
 
-Weight must be entered in the Shopify product settings — this is what Shopify passes to our app.
+Weight is the only field that matters — price is not required. Set weight in **lb** in the Shipping section of the product settings. This is what Shopify passes to our app in the rate request.
 
 ---
 
@@ -63,19 +72,24 @@ Weight must be entered in the Shopify product settings — this is what Shopify 
 ### Step 1 — Project Scaffold
 
 - Initialize Node.js/TypeScript project
-- Install dependencies: `express`, `dotenv`, `axios`, `typescript`, `ts-node`
+- Install dependencies: `express`, `dotenv`, `axios`, `typescript`, `ts-node`, `tsx`
 - Create `.env` file:
   ```
-  SHOPIFY_ACCESS_TOKEN=shpat_...
-  SHOPIFY_SHOP_DOMAIN=your-dev-store.myshopify.com
   PORT=3000
+  APP_URL=""                          # ngrok HTTPS URL
+  SHOPIFY_CLIENT_ID=""                # from Dev Dashboard app
+  SHOPIFY_CLIENT_SECRET=""            # from Dev Dashboard app
+  SHOPIFY_SCOPES="write_shipping,read_orders"
+  SHOPIFY_SHOP_DOMAIN=""              # bare domain only, no https://
+  SHOPIFY_ACCESS_TOKEN=""             # populated after OAuth flow
   ```
 - Directory structure:
   ```
   /src
-    /routes       # rate callback endpoint
-    /services     # mock TMS adapter
-    /types        # TypeScript interfaces for Shopify request/response
+    /routes       # rate callback, auth, health endpoints
+    /services     # TMS adapter interface + mock implementation
+    /types        # TypeScript interfaces for Shopify and TMS
+    /middleware   # HMAC verification
   /scripts        # carrier service registration script
   ```
 
@@ -87,24 +101,27 @@ Build `POST /api/shopify/rates` that:
 3. Calls the mock TMS adapter
 4. Returns hardcoded rates in Shopify format
 
-**Incoming Shopify payload:**
+**Incoming Shopify payload** (note the `rate` wrapper and `grams` field):
 ```json
 {
-  "origin": { "postal_code": "...", "city": "...", "province": "...", "country": "US" },
-  "destination": { "postal_code": "...", "city": "...", "province": "...", "country": "US" },
-  "items": [{ "name": "...", "sku": "...", "quantity": 1, "weight": 10000, "price": 9999 }],
-  "currency": "USD"
+  "rate": {
+    "origin": { "postal_code": "...", "city": "...", "province": "...", "country": "US" },
+    "destination": { "postal_code": "...", "city": "...", "province": "...", "country": "US" },
+    "items": [{ "name": "...", "sku": "...", "quantity": 1, "grams": 10000, "price": 9999 }],
+    "currency": "USD",
+    "locale": "en"
+  }
 }
 ```
 
-**Response to Shopify:**
+**Response to Shopify** (note `total_price` is cents as a string):
 ```json
 {
   "rates": [
     {
       "service_name": "LTL Standard Freight",
       "service_code": "ltl-standard",
-      "total_price": "285.00",
+      "total_price": "28500",
       "currency": "USD",
       "min_delivery_date": "2026-03-06T00:00:00Z",
       "max_delivery_date": "2026-03-10T00:00:00Z"
@@ -176,11 +193,15 @@ Variables:
 
 ## POC Timeline
 
-| Step | Blocker | Can Start? |
-|------|---------|-----------|
-| Build the app code | None | **Yes — now** |
-| Test endpoint with Postman/curl | None | **Yes — now** |
-| Install ngrok | None | **Yes — now** |
-| Get dev store created | Needs company Partner admin | Waiting |
-| Create custom app + get access token | Needs dev store | After admin creates store |
-| Register carrier service + test checkout | Needs access token + ngrok running | After above |
+| Step | Status |
+|------|--------|
+| Build the app code | ✅ Complete |
+| Install ngrok | ✅ Complete |
+| Create dev store (Advanced plan) in Dev Dashboard | ✅ Complete |
+| Create app with OAuth in Dev Dashboard | ✅ Complete |
+| Run OAuth flow — token written to `.env` | ✅ Complete |
+| Register carrier service via `npm run register` | ✅ Complete |
+| Set store location address | ✅ Complete |
+| Activate LTL Freight in shipping zone | ✅ Complete |
+| Add test products | ✅ Complete |
+| Checkout test — LTL rates appearing | ✅ Complete |
