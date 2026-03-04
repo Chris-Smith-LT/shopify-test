@@ -21,7 +21,9 @@ A **Node.js/TypeScript Express app** that acts as a custom shipping rate provide
 /
 ├── src/
 │   ├── app.ts                          # Express app factory — createApp(adapter?)
-│   ├── server.ts                       # Entry point — binds port, logs startup URLs
+│   ├── server.ts                       # Entry point — binds port, SIGTERM handler, startup logs
+│   ├── config.ts                       # Validates required env vars at startup, exports typed config
+│   ├── logger.ts                       # Pino structured JSON logger (CloudWatch/Azure Monitor ready)
 │   ├── types/
 │   │   ├── shopify.ts                  # Shopify request/response TypeScript interfaces
 │   │   └── tms.ts                      # Internal TMS request/response interfaces
@@ -29,7 +31,8 @@ A **Node.js/TypeScript Express app** that acts as a custom shipping rate provide
 │   │   └── verifyShopifyHmac.ts        # HMAC-SHA256 request verification
 │   ├── services/
 │   │   ├── TmsRateAdapter.ts           # Interface: getRates(request): Promise<TmsRateResponse>
-│   │   └── MockTmsAdapter.ts           # POC implementation — returns $285 hardcoded rate
+│   │   ├── MockTmsAdapter.ts           # POC implementation — returns $285 hardcoded rate
+│   │   └── RateCache.ts               # In-memory TTL cache keyed by origin ZIP + dest ZIP + grams
 │   └── routes/
 │       ├── health.ts                   # GET /health → { status: "ok" }
 │       ├── auth.ts                     # GET /auth + GET /auth/callback (Shopify OAuth)
@@ -45,6 +48,9 @@ A **Node.js/TypeScript Express app** that acts as a custom shipping rate provide
 │   ├── MONITORING.md                  # Keep-alive, alerting, logging
 │   ├── REQUIREMENTS.md                # Original client requirements
 │   └── ISSUES_AND_QUESTIONS.md        # Open questions for the client
+├── Dockerfile                         # Multi-stage build — builder stage compiles TS, prod stage runs dist/
+├── .dockerignore
+├── .env.example                       # Template for all environment variables
 ├── README.md                          # Setup and running locally
 ├── SHOPIFY_INTEGRATION_PLAN.md        # High-level project overview and doc index
 ├── package.json
@@ -129,6 +135,9 @@ SHOPIFY_SCOPES="write_shipping,read_orders"
 SHOPIFY_SHOP_DOMAIN=""        # Bare domain only — e.g. my-store.myshopify.com (NO https://)
 SHOPIFY_ACCESS_TOKEN=""       # Written automatically by OAuth flow
 LTL_MIN_WEIGHT_GRAMS=""       # Optional — defaults to 68039 (150 lbs)
+TMS_TIMEOUT_MS=""             # Optional — defaults to 7000 (7 seconds)
+CACHE_TTL_MS=""               # Optional — defaults to 1200000 (20 minutes)
+LOG_LEVEL=""                  # Optional — defaults to "info"
 ```
 
 ---

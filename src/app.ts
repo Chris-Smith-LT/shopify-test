@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from 'express';
 import healthRouter from './routes/health';
 import authRouter from './routes/auth';

@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
+import { logger } from '../logger';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ const router = Router();
 // Sufficient for single-developer POC on one process
 const stateStore = new Map<string, string>();
 
-// GET /auth?shop=chrissmithmercstore.myshopify.com
+// GET /auth?shop=my-store.myshopify.com
 router.get('/auth', (req: Request, res: Response) => {
   const shop = req.query.shop as string;
 
@@ -45,7 +46,7 @@ router.get('/auth', (req: Request, res: Response) => {
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&state=${state}`;
 
-  console.log(`[Auth] Starting OAuth for shop: ${shop}`);
+  logger.info({ shop }, 'Starting OAuth flow');
   res.redirect(authUrl);
 });
 
@@ -60,7 +61,7 @@ router.get('/auth/callback', async (req: Request, res: Response) => {
 
   const expectedState = stateStore.get(shop);
   if (!expectedState || expectedState !== state) {
-    console.warn(`[Auth] State mismatch for shop ${shop} — possible CSRF attempt`);
+    logger.warn({ shop }, 'State mismatch — possible CSRF attempt');
     res.status(403).send('State mismatch');
     return;
   }
@@ -80,15 +81,10 @@ router.get('/auth/callback', async (req: Request, res: Response) => {
     const accessToken: string = tokenResponse.data.access_token;
     const tokenScope: string = tokenResponse.data.scope;
 
-    console.log('\n========================================');
-    console.log('SHOPIFY ACCESS TOKEN RECEIVED');
-    console.log(`Shop:   ${shop}`);
-    console.log(`Scopes: ${tokenScope}`);
-    console.log(`Token:  ${accessToken}`);
-    console.log('========================================\n');
+    logger.info({ shop, scopes: tokenScope }, 'OAuth token received');
 
     writeTokenToEnv(accessToken);
-    console.log('Token written to .env as SHOPIFY_ACCESS_TOKEN');
+    logger.info({ shop }, 'Token written to .env as SHOPIFY_ACCESS_TOKEN');
 
     res.send(`
       <html><body style="font-family:sans-serif;max-width:600px;margin:40px auto">
@@ -101,11 +97,14 @@ router.get('/auth/callback', async (req: Request, res: Response) => {
     `);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[Auth] Token exchange failed: ${message}`);
+    logger.error({ shop, err: message }, 'OAuth token exchange failed');
     res.status(500).send(`OAuth token exchange failed: ${message}`);
   }
 });
 
+// NOTE: writeTokenToEnv is for local development only.
+// In production, replace this with a call to AWS Secrets Manager or Azure Key Vault.
+// See PROD_INTEGRATION.md Step 7 — Secrets Migration.
 function writeTokenToEnv(token: string): void {
   const envPath = path.resolve(process.cwd(), '.env');
   let envContent = '';

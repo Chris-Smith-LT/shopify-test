@@ -1,5 +1,6 @@
 import { TmsRateAdapter } from './TmsRateAdapter';
 import { TmsRateRequest, TmsRateResponse } from '../types/tms';
+import { logger } from '../logger';
 
 export class MockTmsAdapter implements TmsRateAdapter {
   async getRates(request: TmsRateRequest): Promise<TmsRateResponse> {
@@ -11,9 +12,9 @@ export class MockTmsAdapter implements TmsRateAdapter {
     const maxDeliveryDate = new Date(now);
     maxDeliveryDate.setDate(now.getDate() + 7);
 
-    console.log(
-      `[MockTmsAdapter] getRates: ${request.origin.postalCode} → ` +
-      `${request.destination.postalCode}, ${request.totalWeightLbs.toFixed(1)} lbs`
+    logger.info(
+      { origin: request.origin.postalCode, destination: request.destination.postalCode, totalLbs: request.totalWeightLbs.toFixed(1) },
+      '[MockTmsAdapter] Returning hardcoded rate'
     );
 
     return {
