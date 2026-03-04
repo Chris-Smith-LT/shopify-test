@@ -80,12 +80,16 @@ The POC reads credentials from a `.env` file. Cloud hosts do not use `.env` file
 
 The app must be containerized before it can be deployed to App Runner or App Service.
 
-- Add a `Dockerfile` to the project root:
-  - Use a Node.js base image (e.g., `node:18-alpine`)
-  - Copy source, install production dependencies only (`npm ci --omit=dev`)
-  - Run the compiled app (`npm run build` → `npm start`)
-- Add a `.dockerignore` excluding `node_modules/`, `dist/`, and `.env`
-- Build and test the image locally before pushing to ECR or ACR
+- A `Dockerfile` and `.dockerignore` are already in the project root — the image can be built and tested locally before pushing to ECR or ACR:
+  ```bash
+  docker build -t shopify-ltl .
+  docker run --env-file .env -p 3000:3000 shopify-ltl
+  ```
+- **Local Docker limitations to be aware of:**
+  - ngrok must still run separately on the host machine — the container does not tunnel itself
+  - The OAuth callback (`writeTokenToEnv`) writes inside the container filesystem, not the host `.env` — the token will not persist if the container is stopped. This is resolved by the secrets migration in Step 7, after which the token is written to Secrets Manager instead
+  - `npm run register` must be run outside the container since it reads from the host `.env`
+  - For local development, `npm run dev` remains the right tool — Docker is for validating the container and for cloud deployment
 
 ### Step 9 — Cloud Deployment
 
