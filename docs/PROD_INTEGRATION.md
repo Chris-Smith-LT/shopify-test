@@ -51,7 +51,7 @@ HMAC middleware is already implemented in `src/middleware/verifyShopifyHmac.ts`:
 
 Before calling the TMS, validate the incoming Shopify payload:
 - Reject requests with missing origin or destination ZIP codes
-- Check for items with `weight: 0` or `null` — return `{ "rates": [] }` rather than passing bad data to TMS
+- Check for items with `grams: 0` or `null` — return `{ "rates": [] }` rather than passing bad data to TMS
 - Apply LTL eligibility logic (weight threshold, product tag, or metafield — per client decision)
 - Log all validation failures for debugging
 
@@ -67,11 +67,35 @@ Both scopes were registered from the start during POC setup to avoid requiring a
 - `write_shipping` — carrier service registration (Phase 1)
 - `read_orders` — read order data for shipment creation (Phase 2)
 
-### Step 7 — Cloud Deployment
+### Step 7 — Secrets Migration
+
+The POC reads credentials from a `.env` file. Cloud hosts do not use `.env` files — secrets must be stored in the cloud provider's secrets service and loaded at app startup.
+
+- Move `SHOPIFY_CLIENT_SECRET`, `SHOPIFY_ACCESS_TOKEN`, and TMS credentials to **AWS Secrets Manager** or **Azure Key Vault**
+- Update `src/server.ts` (or a dedicated `src/config.ts`) to fetch secrets at startup via the AWS or Azure SDK before the Express app begins accepting requests
+- Non-sensitive config (`PORT`, `SHOPIFY_SHOP_DOMAIN`, `LTL_MIN_WEIGHT_GRAMS`) can remain as environment variables set in the cloud host's configuration panel
+
+### Step 8 — Containerization
+
+The app must be containerized before it can be deployed to App Runner or App Service.
+
+- Add a `Dockerfile` to the project root:
+  - Use a Node.js base image (e.g., `node:18-alpine`)
+  - Copy source, install production dependencies only (`npm ci --omit=dev`)
+  - Run the compiled app (`npm run build` → `npm start`)
+- Add a `.dockerignore` excluding `node_modules/`, `dist/`, and `.env`
+- Build and test the image locally before pushing to ECR or ACR
+
+### Step 9 — Cloud Deployment
 
 See `INFRASTRUCTURE.md` for full AWS and Azure deployment steps, cost estimates, and the decision checklist.
 
-### Step 8 — Environments
+**URL transition from ngrok to production:** When switching from local ngrok to the cloud URL, update all three places:
+1. `APP_URL` in the cloud host's environment config (replaces `.env`)
+2. The redirect URL in the Dev Dashboard app config (for OAuth)
+3. Re-run `npm run register` pointing at the production URL to update the carrier service callback in Shopify (`carrierServiceCreate` cannot update in place — delete the existing carrier service from **Settings → Shipping and delivery → Manage rates** first if one is already registered)
+
+### Step 10 — Environments
 
 Maintain two fully separate deployments:
 
@@ -83,7 +107,7 @@ Maintain two fully separate deployments:
 | Secrets | `.env` file | AWS Secrets Manager / Azure Key Vault |
 | Carrier service callback | ngrok URL or dev cloud URL | Production cloud URL |
 
-### Step 9 — Go-Live Checklist
+### Step 11 — Go-Live Checklist
 
 - [ ] Real TMS adapter tested against TMS sandbox end-to-end
 - [ ] HMAC verification confirmed blocking unauthorized requests

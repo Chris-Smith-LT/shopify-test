@@ -178,10 +178,10 @@ Variables:
 
 ## POC Success Criteria
 
-- [ ] Shopify dev store checkout shows LTL rates returned by our app
-- [ ] LTL rates appear alongside (not replacing) existing UPS rates
-- [ ] Returning `{ "rates": [] }` correctly causes Shopify to show UPS rates only
-- [ ] App responds well within the 10-second Shopify timeout
+- [x] Shopify dev store checkout shows LTL rates returned by our app
+- [x] LTL rates appear alongside (not replacing) existing UPS rates
+- [x] Returning `{ "rates": [] }` correctly causes Shopify to show UPS rates only
+- [x] App responds well within the 10-second Shopify timeout
 
 ---
 
@@ -191,6 +191,24 @@ Variables:
 2. **Checkout test:** Add an LTL-qualifying product to the dev store, proceed to checkout, confirm mock LTL rates appear alongside UPS rates.
 3. **Fallback test:** Return `{ "rates": [] }` intentionally and confirm Shopify displays UPS rates only with no errors.
 4. **Response time check:** Confirm the app responds well within the 10-second Shopify timeout under normal conditions.
+
+---
+
+## What This POC Does Not Include
+
+The following items were intentionally excluded from the POC. All of them must be addressed before production. See `PROD_INTEGRATION.md` for implementation steps.
+
+| Gap | Risk if not addressed | Where to implement |
+|-----|-----------------------|--------------------|
+| **Real TMS adapter** — `MockTmsAdapter` returns a hardcoded $285 rate | App returns fictional rates in production | `src/services/RealTmsAdapter.ts` — swap in `app.ts` (one line) |
+| **TMS timeout handling** — no timeout on TMS API calls | Slow/unresponsive TMS hangs checkout until Shopify's 10-second limit kills it, breaking the checkout experience | Wrap TMS call in a 7-second `Promise.race` → return `{ "rates": [] }` on timeout |
+| **Rate caching** — every checkout hits the TMS directly | Unnecessary TMS load; repeated rate requests for the same cart are slow | In-memory cache keyed by origin ZIP + destination ZIP + total weight; 15–30 min TTL |
+| **Input validation** — zero-weight items and missing ZIP codes pass through to the TMS | Bad data sent to TMS may cause errors or unexpected responses | Validate before TMS call; return `{ "rates": [] }` for invalid payloads |
+| **Structured logging** — currently uses `console.log` | Logs are unqueryable in CloudWatch/Azure Monitor; debugging production issues is difficult | Replace with structured JSON logging (e.g., `pino`) |
+| **Secrets management** — credentials stored in `.env` file | `.env` cannot be used on a cloud host; secrets would need to be in source control or passed unsafely | AWS Secrets Manager or Azure Key Vault; load at app startup |
+| **Containerization** — no `Dockerfile` | App cannot be deployed to App Runner or App Service without one | Add `Dockerfile`; push image to ECR or ACR |
+| **Cold start protection** — no keep-alive ping | App Runner/App Service can scale to zero; a cold start on a checkout could exceed Shopify's timeout | Scheduled `/health` ping every 5 minutes — see `MONITORING.md` |
+| **Merchant store plan** — merchant must be on Shopify Advanced or higher | Carrier-calculated shipping is not available on lower plans | Confirm with merchant before go-live |
 
 ---
 

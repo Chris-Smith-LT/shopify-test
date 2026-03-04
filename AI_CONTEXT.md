@@ -177,4 +177,6 @@ See `docs/PROD_INTEGRATION.md` for full detail. Summary:
 | Timeout handling (7s TMS timeout → `{ "rates": [] }`) | Pending |
 | Input validation (zero-weight, missing ZIPs) | Pending |
 | Structured JSON logging | Pending |
+| Secrets migration (`.env` → Secrets Manager / Key Vault) | Pending |
+| Containerization (add `Dockerfile`) | Pending |
 | Cloud deployment (AWS App Runner or Azure App Service) | Pending — see `docs/INFRASTRUCTURE.md` |
