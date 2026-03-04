@@ -74,6 +74,7 @@ The POC reads credentials from a `.env` file. Cloud hosts do not use `.env` file
 - Move `SHOPIFY_CLIENT_SECRET`, `SHOPIFY_ACCESS_TOKEN`, and TMS credentials to **AWS Secrets Manager** or **Azure Key Vault**
 - Update `src/server.ts` (or a dedicated `src/config.ts`) to fetch secrets at startup via the AWS or Azure SDK before the Express app begins accepting requests
 - Non-sensitive config (`PORT`, `SHOPIFY_SHOP_DOMAIN`, `LTL_MIN_WEIGHT_GRAMS`) can remain as environment variables set in the cloud host's configuration panel
+- **Update `src/routes/auth.ts`:** The OAuth callback currently calls `writeTokenToEnv()` which writes the access token directly to the local `.env` file. This will not work on a cloud host — there is no `.env` file to write to. Replace `writeTokenToEnv()` with a call that stores the token in Secrets Manager or Key Vault instead
 
 ### Step 8 — Containerization
 
@@ -95,7 +96,24 @@ See `INFRASTRUCTURE.md` for full AWS and Azure deployment steps, cost estimates,
 2. The redirect URL in the Dev Dashboard app config (for OAuth)
 3. Re-run `npm run register` pointing at the production URL to update the carrier service callback in Shopify (`carrierServiceCreate` cannot update in place — delete the existing carrier service from **Settings → Shipping and delivery → Manage rates** first if one is already registered)
 
-### Step 10 — Environments
+### Step 10 — Merchant Store Onboarding
+
+This step connects the production app to the merchant's real Shopify store. It requires coordination with someone who has admin access to their store.
+
+**Before starting:**
+- Confirm the merchant is on the **Shopify Advanced plan or higher** — carrier-calculated shipping is not available on lower plans. This is a hard blocker and must be confirmed before any production work begins.
+- The production app must already be deployed and reachable at its public URL (Step 9) before running the OAuth flow.
+
+**Process:**
+1. Create a new app in the Shopify Dev Dashboard pointed at the production URL — this is a separate app from the dev app with its own client ID and secret. Add the production callback URL as the redirect URL: `https://<prod-url>/auth/callback`
+2. Add the new app's `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` to the production secrets store
+3. Set `SHOPIFY_SHOP_DOMAIN` in the cloud host's environment config to the merchant's store domain (bare domain, no `https://`)
+4. Run the OAuth flow by visiting `https://<prod-url>/auth?shop=<merchant-store>.myshopify.com` — the merchant is redirected to their store admin to approve the requested permissions (`write_shipping`, `read_orders`). **The merchant must click approve.** This can be done remotely by sending them the link — they do not need to be present in person, but someone with admin access to their store must complete this step
+5. After approval, `SHOPIFY_ACCESS_TOKEN` is stored automatically (via the updated Secrets Manager path from Step 7)
+6. Run `npm run register` with the production environment to register the carrier service callback URL with the merchant's store
+7. The merchant (or someone with store admin access) activates the carrier service: **Settings → Shipping and delivery → Manage rates → Add rate → Use carrier or app to calculate rates → enable LTL Freight**
+
+### Step 11 — Environments
 
 Maintain two fully separate deployments:
 
@@ -107,7 +125,7 @@ Maintain two fully separate deployments:
 | Secrets | `.env` file | AWS Secrets Manager / Azure Key Vault |
 | Carrier service callback | ngrok URL or dev cloud URL | Production cloud URL |
 
-### Step 11 — Go-Live Checklist
+### Step 12 — Go-Live Checklist
 
 - [ ] Real TMS adapter tested against TMS sandbox end-to-end
 - [ ] HMAC verification confirmed blocking unauthorized requests
