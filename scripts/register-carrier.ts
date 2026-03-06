@@ -27,51 +27,77 @@ async function registerCarrierService(): Promise<void> {
     process.exit(1);
   }
 
+  const developerName = process.env.DEVELOPER_NAME;
+  if (!developerName) {
+    console.error('ERROR: DEVELOPER_NAME is not set in .env');
+    console.error('Add DEVELOPER_NAME="Your Name" to .env — this identifies your carrier service on the shared dev store');
+    process.exit(1);
+  }
+
+  const serviceName = `LTL Freight - ${developerName}`;
   const callbackUrl = `${appUrl}/api/shopify/rates`;
 
-  const mutation = `
-    mutation CreateCarrierService($input: DeliveryCarrierServiceCreateInput!) {
-      carrierServiceCreate(input: $input) {
-        carrierService {
-          id
-          name
-          callbackUrl
-          active
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `;
-
-  const variables = {
-    input: {
-      name: 'LTL Freight',
-      callbackUrl,
-      supportsServiceDiscovery: true,
-      active: true,
-    },
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Shopify-Access-Token': accessToken,
   };
+  const url = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
 
   console.log('Registering carrier service with Shopify...');
   console.log(`  Shop:         ${shopDomain}`);
+  console.log(`  Service name: ${serviceName}`);
   console.log(`  Callback URL: ${callbackUrl}`);
 
   try {
-    const response = await axios.post(
-      `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-      { query: mutation, variables },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': accessToken,
-        },
+    // Step 1 — delete any existing carrier services registered by this app
+    // Uses REST API for listing/deletion (reliable for reads; GraphQL query field is not stable)
+    const restBase = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}`;
+    const restHeaders = { 'X-Shopify-Access-Token': accessToken };
+
+    const listResponse = await axios.get(`${restBase}/carrier_services.json`, { headers: restHeaders });
+    const existing: Array<{ id: number; name: string; callback_url: string }> =
+      listResponse.data.carrier_services ?? [];
+
+    if (existing.length > 0) {
+      console.log(`\nFound ${existing.length} carrier service(s) on store — removing any owned by this app...`);
+      for (const service of existing) {
+        try {
+          await axios.delete(`${restBase}/carrier_services/${service.id}.json`, { headers: restHeaders });
+          console.log(`  Deleted: ${service.name}`);
+        } catch {
+          // 404 means this carrier service belongs to a different app — skip it
+          console.log(`  Skipped: ${service.name} (owned by a different app)`);
+        }
       }
+    }
+
+    // Step 2 — create fresh
+    const createMutation = `
+      mutation CreateCarrierService($input: DeliveryCarrierServiceCreateInput!) {
+        carrierServiceCreate(input: $input) {
+          carrierService { id name callbackUrl active }
+          userErrors { field message }
+        }
+      }
+    `;
+
+    const createResponse = await axios.post(
+      url,
+      {
+        query: createMutation,
+        variables: {
+          input: {
+            name: serviceName,
+            callbackUrl,
+            supportsServiceDiscovery: true,
+            active: true,
+          },
+        },
+      },
+      { headers }
     );
 
-    const { data } = response;
+    const { data } = createResponse;
 
     if (data.errors) {
       console.error('\nGraphQL errors:');
@@ -101,7 +127,7 @@ async function registerCarrierService(): Promise<void> {
     console.log(`  Name:         ${cs.name}`);
     console.log(`  Callback URL: ${cs.callbackUrl}`);
     console.log(`  Active:       ${cs.active}`);
-    console.log('\nNext step: add an LTL-qualifying product to your dev store cart and proceed to checkout.');
+    console.log('\nNext step: activate LTL Freight in the store — Settings → Shipping and delivery → Manage rates → Add rate → Use carrier or app.');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`\nRegistration failed: ${message}`);
